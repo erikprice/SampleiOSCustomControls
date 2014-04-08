@@ -10,6 +10,9 @@
 
 #import "ControlsViewController.h"
 #import "RACEXTScope.h"
+#import <BCOVIMA.h>
+#import <IMAAdsLoader.h>
+#import <IMAAdsRenderingSettings.h>
 
 
 // ** Customize Here **
@@ -65,12 +68,45 @@ static NSTimeInterval const kViewControllerFadeControlsOutAnimationDuration = .2
 {
     BCOVPlayerSDKManager *playbackManager = [BCOVPlayerSDKManager sharedManager];
     
-    id<BCOVPlaybackController> playbackController = [playbackManager createPlaybackController];
+    IMASettings *imaSettings = [[IMASettings alloc] init];
+    NSString *publisherID = @"IMA_PPID_0";
+    imaSettings.ppid = publisherID;
+    imaSettings.language = @"en";
+    
+    IMAAdsRenderingSettings *adsRenderingSettings = [[IMAAdsRenderingSettings alloc] init];
+    // No ads rendering settings right now.
+
+    id<BCOVPlaybackController> playbackController = [playbackManager createIMAPlaybackControllerWithSettings:imaSettings adsRenderingSettings:adsRenderingSettings viewStrategy:[playbackManager BCOVIMAAdViewStrategy]];
     playbackController.delegate = self;
     self.playbackController = playbackController;
     
     self.catalogService = [[BCOVCatalogService alloc] initWithToken:kViewControllerCatalogToken];
     [self requestContentFromCatalog];
+}
+
+- (BCOVPlaylist *)addAdTagsToPlaylistVideos:(BCOVPlaylist *)playlist
+{
+    return [playlist update:^(id<BCOVMutablePlaylist> mutablePlaylist) {
+        
+        NSArray *videos = mutablePlaylist.videos;
+        NSMutableArray *videosWithAdTags = [[NSMutableArray alloc] init];
+        for (BCOVVideo *video in videos)
+        {
+            BCOVVideo *withAdTag = [video update:^(id<BCOVMutableVideo> mutableVideo) {
+                
+                NSMutableDictionary *properties = [[NSMutableDictionary alloc] initWithCapacity:mutableVideo.properties.count + 1];
+                [properties addEntriesFromDictionary:mutableVideo.properties];
+                properties[kBCOVIMAAdTag] = @"http://10.1.12.55:9090/formats/IMA3/googleIMAsample";
+                mutableVideo.properties = properties;
+                
+            }];
+            
+            [videosWithAdTags addObject:withAdTag];
+        }
+        
+        mutablePlaylist.videos = videosWithAdTags;
+        
+    }];
 }
 
 - (void)requestContentFromCatalog
@@ -80,9 +116,11 @@ static NSTimeInterval const kViewControllerFadeControlsOutAnimationDuration = .2
         
         @strongify(self);
         
+        playlist = [self addAdTagsToPlaylistVideos:playlist];
+        
         if (playlist)
         {
-            [self.playbackController setVideos:playlist.videos];
+            [self.playbackController setVideos:playlist];
         }
         else
         {
